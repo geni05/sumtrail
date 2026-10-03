@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sum Trail</title>
+<script src="https://www.youtube.com/game_api/v1"></script>
+<style>
+:root{--bg:#10151f;--panel:#1b2433;--line:#2c3850;--ink:#f2f5fa;--mute:#a3afc4;--accent:#ffb703;--ok:#2ec4b6;--bad:#e5484d;--sel:#3a86ff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+#app{height:100%;display:flex;align-items:center;justify-content:center;padding:10px}
+.screen{display:none;width:100%;max-width:520px;max-height:100%;overflow-y:auto;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.screen.on{display:flex}
+h1{margin:0;font-size:clamp(30px,8vw,46px)}
+p{margin:0;color:var(--mute);line-height:1.4}
+b{color:var(--ink)}
+button{font:inherit;color:var(--ink);background:var(--panel);border:2px solid var(--line);border-radius:14px;padding:12px 16px;min-height:52px;min-width:52px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#1a1200;font-weight:700}
+button:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:10px;width:100%;justify-content:center;flex-wrap:wrap}
+.row>button{flex:1 1 140px}
+#hud{display:flex;justify-content:space-between;width:100%;font-weight:700;font-size:18px}
+#target{font-size:clamp(34px,9vw,54px);font-weight:800;color:var(--accent);line-height:1}
+#sumline{min-height:1.5em;font-size:clamp(16px,4.8vw,22px);font-weight:700;color:var(--mute)}
+#sumline.ok,.demoSum.ok{color:var(--ok)}
+#sumline.bad,.demoSum.bad{color:var(--bad)}
+.demoSum{min-height:1.5em;font-size:20px;font-weight:700;color:var(--mute)}
+.legend{display:grid;gap:6px;text-align:left;font-size:17px;color:var(--mute)}
+.legend b{display:inline-block;min-width:4.6em;color:var(--ink)}
+.legend .okc{color:var(--ok)}.legend .badc{color:var(--bad)}
+#grid{display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:1fr;gap:8px;width:min(92vw,52vh,440px);aspect-ratio:1}
+.cell{padding:0;min-height:0;min-width:0;font-size:clamp(20px,6vw,32px);font-weight:700;border-radius:12px}
+.cell.sel{background:var(--sel);border-color:var(--sel)}
+.cell.hint{border-color:var(--ok);box-shadow:0 0 0 3px var(--ok) inset}
+.cell.bad{background:var(--bad);border-color:var(--bad)}
+.cell.good{background:var(--ok);border-color:var(--ok);color:#06201d}
+#demoGrid{display:grid;grid-template-columns:repeat(3,64px);gap:8px}
+.dcell{height:64px;display:flex;align-items:center;justify-content:center;border:2px solid var(--line);border-radius:12px;background:var(--panel);font-weight:700;font-size:24px}
+.dcell.sel{background:var(--sel);border-color:var(--sel)}
+.dcell.bad{background:var(--bad);border-color:var(--bad)}
+.dcell.good{background:var(--ok);border-color:var(--ok);color:#06201d}
+.small{font-size:14px}
+@media (max-height:560px){
+  #app{padding:6px}
+  .screen{gap:6px}
+  #gameLabel{display:none}
+  #target{font-size:34px}
+  #hud{font-size:16px}
+  #grid{width:min(92vw,44vh,440px);gap:6px}
+  button{min-height:44px;padding:8px 14px}
+}
+#pause{position:fixed;inset:0;background:rgba(16,21,31,.9);display:none;align-items:center;justify-content:center;font-size:28px;font-weight:700}
+#pause.on{display:flex}
+</style>
+</head>
+<body>
+<div id="app">
+  <section id="loading" class="screen on"><h1>Sum Trail</h1><p>Loading…</p></section>
+
+  <section id="menu" class="screen">
+    <h1>Sum Trail</h1>
+    <p>Chain touching tiles so their numbers add up to the <b>target</b>.</p>
+    <p id="streak"></p>
+    <div class="row">
+      <button id="btnDaily" class="primary">Daily puzzle<br><span class="small">one try per day</span></button>
+      <button id="btnPractice">Practice<br><span class="small">unlimited, no streak</span></button>
+    </div>
+    <p id="dailyInfo" class="small"></p>
+    <button id="btnHelp">How to play</button>
+  </section>
+
+  <section id="help" class="screen">
+    <h1>How to play</h1>
+    <div id="demoGrid" aria-hidden="true"></div>
+    <div>Target <b>15</b></div>
+    <div id="demoSum" class="demoSum">&nbsp;</div>
+    <div class="legend">
+      <div><b>↑ ↓ ← →</b> touching tiles only</div>
+      <div><b class="okc">= 15 ✓</b> exact: solved, time added</div>
+      <div><b class="badc">&gt; 15 ✕</b> over: the trail clears</div>
+    </div>
+    <p class="small"><b>Daily</b>: one try a day, same for everyone &middot; <b>Practice</b>: unlimited</p>
+    <button id="btnHelpDone" class="primary">Got it</button>
+  </section>
+
+  <section id="game" class="screen">
+    <div id="hud"><span>Score <span id="score">0</span></span><span>Time <span id="time">0</span></span></div>
+    <div id="gameLabel">Target</div>
+    <div id="target">0</div>
+    <div id="sumline"></div>
+    <div id="grid" role="group" aria-label="Number grid"></div>
+    <div class="row">
+      <button id="btnClear">Clear</button>
+      <button id="btnHint">Hint (watch ad)</button>
+    </div>
+  </section>
+
+  <section id="result" class="screen">
+    <h1 id="resTitle">Time!</h1>
+    <p>Score <b id="resScore">0</b> · Solved <b id="resSolved">0</b></p>
+    <p id="resBest"></p>
+    <p id="resStreak"></p>
+    <div class="row">
+      <button id="btnAgain" class="primary">Practice again</button>
+      <button id="btnMenu">Menu</button>
+    </div>
+  </section>
+</div>
+<div id="pause">Paused</div>
+
+<script>
+(function () {
+  'use strict';
+  var N = 5, DAY = 86400000, AD_TIMEOUT = 8000, AD_EVERY = 2; // interstitial every AD_EVERY-th results breakpoint
+  var YT = (typeof ytgame !== 'undefined' && ytgame && ytgame.IN_PLAYABLES_ENV) ? ytgame : null;
+  var DEV = !YT && (location.protocol === 'file:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+  var $ = function (id) { return document.getElementById(id); };
+
+  var save = { v: 1, streak: 0, lastDay: -1, best: 0, dailyDay: -1, dailyScore: 0, seenHelp: false };
+  var paused = false, adBusy = false, audioOn = true, runsSinceAd = 0;
+  var rnd = Math.random, run = null, cells = [];
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function today() { return Math.floor(Date.now() / DAY); } // UTC day: same puzzle worldwide
+
+  // ---------- persistence (SDK cloud save only) ----------
+  async function loadSave() {
+    if (!YT) return;
+    try {
+      var s = await YT.game.loadData();
+      if (s) { var o = JSON.parse(s); if (o && o.v === 1) { for (var k in save) if (k in o) save[k] = o[k]; } }
+    } catch (e) { /* first run or unavailable: keep defaults */ }
+  }
+  function persist() {
+    if (!YT) return;
+    try { var p = YT.game.saveData(JSON.stringify(save)); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+  }
+
+  // ---------- puzzle generation (always solvable) ----------
+  function makeRound(r) {
+    var L = Math.min(3 + Math.floor(r / 2), 7);
+    for (;;) {
+      var path = [], used = {}, c = Math.floor(rnd() * N * N), ok = true;
+      path.push(c); used[c] = true;
+      while (path.length < L) {
+        var x = c % N, y = Math.floor(c / N), nb = [];
+        if (x > 0) nb.push(c - 1); if (x < N - 1) nb.push(c + 1);
+        if (y > 0) nb.push(c - N); if (y < N - 1) nb.push(c + N);
+        var free = nb.filter(function (n) { return !used[n]; });
+        if (!free.length) { ok = false; break; }
+        c = free[Math.floor(rnd() * free.length)]; path.push(c); used[c] = true;
+      }
+      if (!ok) continue;
+      var vals = [];
+      for (var i = 0; i < N * N; i++) vals.push(1 + Math.floor(rnd() * 9));
+      var target = path.reduce(function (s, i2) { return s + vals[i2]; }, 0);
+      return { vals: vals, path: path, target: target };
+    }
+  }
+  function adjacent(a, b) {
+    return Math.abs((a % N) - (b % N)) + Math.abs(Math.floor(a / N) - Math.floor(b / N)) === 1;
+  }
+
+  // ---------- UI ----------
+  function show(id) {
+    ['loading', 'menu', 'help', 'game', 'result'].forEach(function (s) { $(s).classList.toggle('on', s === id); });
+    if (id === 'help' && !paused) startDemo(); else stopDemo();
+  }
+  // ---------- how-to-play demo (3x3 example, loops) ----------
+  var demo = { vals: [4, 2, 9, 7, 6, 1, 3, 8, 5], target: 15, step: 0, timer: null, cells: [],
+    // a good trail (9+1+5=15), then an overshoot (9+1+6=16)
+    seq: [[], [2], [2, 5], [2, 5, 8], [2, 5, 8], [], [2], [2, 5], [2, 5, 4], [2, 5, 4]] };
+  function buildDemo() {
+    var g = $('demoGrid');
+    for (var i = 0; i < 9; i++) { var d = document.createElement('div'); d.className = 'dcell'; d.textContent = demo.vals[i]; g.appendChild(d); demo.cells.push(d); }
+  }
+  function demoStep() {
+    var sel = demo.seq[demo.step % demo.seq.length], sum = 0, i;
+    var vals = sel.map(function (c) { return demo.vals[c]; });
+    vals.forEach(function (v) { sum += v; });
+    var state = sel.length && sum === demo.target ? 'good' : (sum > demo.target ? 'bad' : 'sel');
+    for (i = 0; i < 9; i++) demo.cells[i].className = 'dcell' + (sel.indexOf(i) >= 0 ? ' ' + state : '');
+    var el = $('demoSum');
+    el.textContent = !sel.length ? '\u00a0' : (vals.join(' + ') + ' = ' + sum + (state === 'good' ? ' \u2713' : (state === 'bad' ? ' > ' + demo.target + ' \u2715' : '')));
+    el.className = 'demoSum' + (state === 'good' ? ' ok' : (state === 'bad' ? ' bad' : ''));
+    demo.step++;
+  }
+  function startDemo() { stopDemo(); demo.step = 0; demoStep(); demo.timer = setInterval(demoStep, 900); }
+  function stopDemo() { if (demo.timer) { clearInterval(demo.timer); demo.timer = null; } }
+  function buildGrid() {
+    var g = $('grid');
+    for (var i = 0; i < N * N; i++) {
+      var b = document.createElement('button');
+      b.className = 'cell'; b.type = 'button';
+      (function (idx) { b.addEventListener('click', function () { tapCell(idx); }); })(i);
+      g.appendChild(b); cells.push(b);
+    }
+  }
+  function renderPuzzle() {
+    var p = run.puzzle;
+    $('target').textContent = p.target;
+    for (var i = 0; i < cells.length; i++) {
+      cells[i].textContent = p.vals[i];
+      cells[i].setAttribute('aria-label', 'Tile ' + p.vals[i]);
+    }
+    renderSel();
+  }
+  function renderSel() {
+    var sum = 0;
+    for (var i = 0; i < cells.length; i++) {
+      var sel = run.sel.indexOf(i) >= 0, pi = run.puzzle.path.indexOf(i);
+      cells[i].className = 'cell' + (sel ? ' sel' : '') + (run.hint && !sel && pi >= 0 && pi < 2 ? ' hint' : '');
+    }
+    var vals = run.sel.map(function (c) { return run.puzzle.vals[c]; });
+    vals.forEach(function (v) { sum += v; });
+    var line, cls = '';
+    if (run.sel.length) { line = (run.msg ? run.msg + '  ' : '') + vals.join(' + ') + ' = ' + sum; }
+    else { line = run.msg || ''; cls = run.msgCls || ''; }
+    $('sumline').textContent = line; $('sumline').className = cls;
+    return sum;
+  }
+  function updateHud() {
+    var t = Math.ceil(run.time);
+    if (run.shownTime !== t) { run.shownTime = t; $('time').textContent = t; }
+    $('score').textContent = run.score;
+  }
+  function showPause() { $('pause').classList.toggle('on', paused); }
+  function toast(msg) { if (run) { run.msg = msg; run.msgCls = ''; renderSel(); } }
+
+  function fmtNext() {
+    var ms = (today() + 1) * DAY - Date.now(), h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    return h + 'h ' + m + 'm';
+  }
+  function streakNow() { return save.lastDay >= today() - 1 ? save.streak : 0; }
+  function showMenu() {
+    var t = today(), done = save.dailyDay === t;
+    $('streak').innerHTML = 'Daily streak: <b>' + streakNow() + '</b> · Best score: <b>' + save.best + '</b>';
+    $('dailyInfo').textContent = done ? ('Today\u2019s score: ' + save.dailyScore + '. Next puzzle in ' + fmtNext() + '.') : 'A new puzzle every day, the same for everyone.';
+    $('btnDaily').disabled = done;
+    show('menu');
+  }
+
+  // ---------- game flow ----------
+  function startRun(mode) {
+    var day = today();
+    if (mode === 'daily') {
+      rnd = mulberry32((day * 2654435761) >>> 0);
+      save.streak = (save.lastDay === day - 1) ? save.streak + 1 : (save.lastDay === day ? save.streak : 1);
+      save.lastDay = day; save.dailyDay = day; save.dailyScore = 0;
+      persist();
+    } else { rnd = Math.random; }
+    run = { mode: mode, day: day, round: 0, solved: 0, score: 0, time: 45, sel: [], hint: false, over: false, shownTime: -1, puzzle: null, msg: '', msgCls: '' };
+    run.puzzle = makeRound(0);
+    $('btnHint').style.display = (YT || DEV) ? '' : 'none';
+    $('btnHint').disabled = false;
+    renderPuzzle(); updateHud(); show('game');
+  }
+  function nextRound() {
+    run.round++; run.sel = []; run.hint = false;
+    run.puzzle = makeRound(run.round);
+    $('btnHint').disabled = false;
+    renderPuzzle();
+  }
+  function tapCell(i) {
+    if (!run || run.over || paused || adBusy) return;   // adBusy only while a real ad is showing
+    var s = run.sel, idx = s.indexOf(i), restarted = false;
+    if (idx >= 0) { run.sel = s.slice(0, idx); }
+    else if (!s.length || adjacent(s[s.length - 1], i)) { s.push(i); }
+    else { run.sel = [i]; restarted = true; }
+    run.msg = restarted ? '\u2715 not touching, new trail' : ''; run.msgCls = '';
+    var vals = run.sel.map(function (c) { return run.puzzle.vals[c]; }), sum = 0;
+    vals.forEach(function (v) { sum += v; });
+    var eq = vals.join(' + ') + ' = ' + sum, T = run.puzzle.target;
+    if (sum === T) {
+      var len = run.sel.length, pts = 30 * len;          // longer trails are worth more
+      run.score += pts; run.solved++; run.time += 1.5 * len;
+      nextRound();                                       // advance immediately: taps are never ignored
+      run.msg = eq + ' \u2713  +' + pts; run.msgCls = 'ok'; renderSel(); updateHud();
+    } else if (sum > T) {
+      var bad = run.sel.slice();
+      run.sel = []; run.msg = eq + ' > ' + T + ' \u2715'; run.msgCls = 'bad'; renderSel();
+      bad.forEach(function (c) { cells[c].classList.add('bad'); });
+      setTimeout(function () { bad.forEach(function (c) { cells[c].classList.remove('bad'); }); }, 300);
+    } else { renderSel(); }
+  }
+  function endRun() {
+    run.over = true;
+    if (run.mode === 'daily') { save.dailyScore = run.score; }
+    var newBest = run.score > save.best;
+    if (newBest) save.best = run.score;
+    persist();
+    if (newBest && YT) { try { var p = YT.engagement.sendScore({ value: save.best }); if (p && p.catch) p.catch(function () {}); } catch (e) {} }
+    $('resTitle').textContent = run.mode === 'daily' ? 'Daily complete' : 'Time!';
+    $('resScore').textContent = run.score; $('resSolved').textContent = run.solved;
+    $('resBest').textContent = newBest ? 'New best score!' : ('Best score: ' + save.best);
+    $('resStreak').textContent = 'Daily streak: ' + streakNow();
+    $('btnAgain').textContent = 'Practice again';
+    show('result');
+  }
+
+  // ---------- ads (never required to play) ----------
+  function withTimeout(p) {
+    return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout')); }, AD_TIMEOUT); })]);
+  }
+  async function breakpointAd() {
+    runsSinceAd++;
+    if (!YT || runsSinceAd % AD_EVERY !== 0) return;
+    adBusy = true;
+    try { await withTimeout(YT.ads.requestInterstitialAd()); } catch (e) {}
+    adBusy = false;
+  }
+  async function useHint() {
+    if (!run || run.over || run.hint || adBusy) return;
+    if (!YT) { if (DEV) { run.hint = true; renderSel(); $('btnHint').disabled = true; } return; }
+    adBusy = true; $('btnHint').disabled = true;
+    try {
+      var ok = await withTimeout(YT.ads.requestRewardedAd('hint-first-two-tiles'));
+      if (ok) { run.hint = true; renderSel(); } else { toast('No reward this time.'); $('btnHint').disabled = false; }
+    } catch (e) { toast('Hint unavailable right now.'); $('btnHint').disabled = false; }
+    adBusy = false;
+  }
+
+  // ---------- main loop ----------
+  var lastT = 0;
+  function frame(t) {
+    requestAnimationFrame(frame);
+    var dt = Math.min(100, t - lastT); lastT = t;
+    if (!run || run.over || paused || adBusy || !$('game').classList.contains('on')) return;
+    run.time -= dt / 1000;
+    if (run.time <= 0) { run.time = 0; updateHud(); endRun(); return; }
+    updateHud();
+  }
+
+  async function init() {
+    buildGrid(); buildDemo();
+    $('btnHelp').addEventListener('click', function () { show('help'); });
+    $('btnHelpDone').addEventListener('click', function () { save.seenHelp = true; persist(); showMenu(); });
+    $('btnDaily').addEventListener('click', function () { startRun('daily'); });
+    $('btnPractice').addEventListener('click', function () { startRun('practice'); });
+    $('btnClear').addEventListener('click', function () { if (run && !run.over && !paused && !adBusy) { run.sel = []; renderSel(); } });
+    $('btnHint').addEventListener('click', useHint);
+    $('btnAgain').addEventListener('click', async function () { await breakpointAd(); startRun('practice'); });
+    $('btnMenu').addEventListener('click', async function () { await breakpointAd(); showMenu(); });
+
+    if (YT) {
+      YT.system.onPause(function () { paused = true; stopDemo(); showPause(); persist(); });
+      YT.system.onResume(function () { paused = false; showPause(); if ($('help').classList.contains('on')) startDemo(); });
+      audioOn = YT.system.isAudioEnabled();
+      YT.system.onAudioEnabledChange(function (v) { audioOn = v; }); // game has no audio yet
+      YT.game.firstFrameReady();
+    }
+    await loadSave();
+    if (save.seenHelp) showMenu(); else show('help');
+    if (YT) YT.game.gameReady();
+    requestAnimationFrame(frame);
+  }
+  init();
+})();
+</script>
+</body>
+</html>
